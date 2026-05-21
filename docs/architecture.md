@@ -191,6 +191,10 @@ DigestDetailScreen(digestId)
 
 researcher 결과 수신 후 본 문서 §3, §7, §8을 갱신한다.
 
+**Q6 잠정 정의(planner)**: "100자 내외" = 공백 포함 한글 코드포인트 기준 **80~120자**, 줄바꿈 제거, 키워드 중심 문체. 단일 함수 `SummaryLengthEnforcer`로 캡슐화하여 변경 시 한 곳만 수정.
+
+**추가 결정 사항(`docs/open-questions.md` Q9~Q12)**: LLM 공급자 선택, 알림 본문 정책, 다이제스트 보관 기간, 본문 짧을 시 외부 크롤링 허용 여부.
+
 ---
 
 ## 9. 비기능 보장
