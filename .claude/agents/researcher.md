@@ -1,7 +1,7 @@
 ---
 name: researcher
 description: 외부 API·이용약관·기술 선택지 등 불확실한 사실 관계를 확인해야 할 때 반드시 사용하는 자료 조사 에이전트. 빅카인즈 API 가능 여부, FCM/WorkManager 스케줄링, LLM API 옵션 등 코드 결정 전에 검증이 필요한 항목을 선제적으로 조사한다.
-tools: Read, Grep, Glob, WebSearch, WebFetch
+tools: Read, Grep, Glob, WebSearch, WebFetch, Write, Edit
 model: sonnet
 ---
 
