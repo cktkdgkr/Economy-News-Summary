@@ -1,0 +1,25 @@
+# 진행 상태 원장 (Progress Ledger)
+
+> 오케스트레이터가 각 단계 시작/종료 시 갱신한다. 상태: `TODO` / `IN_PROGRESS` / `BLOCKED` / `DONE`.
+
+## 마일스톤
+
+| 단계 | 담당 에이전트 | 상태 | 비고 |
+| --- | --- | --- | --- |
+| M0. Harness 구성 | (오케스트레이터 직접) | DONE | 본 커밋에서 완료. `.claude/agents/`, `docs/` 골격 생성. |
+| M1. 외부 의존성 조사 | researcher | TODO | `docs/open-questions.md` Q1~Q4 해소 필요. |
+| M2. 계획·아키텍처 수립 | planner | TODO | M1 결과를 입력으로 `docs/plan.md`, `docs/architecture.md` 작성. |
+| M3. 사용자 승인 | (오케스트레이터 ↔ 사용자) | TODO | M2 결과 검토 및 결정 사항 확정. |
+| M4. 프로젝트 스캐폴드 | coder → code-reviewer | TODO | Android 프로젝트 초기 생성, Gradle/Compose 설정. |
+| M5. 뉴스 수집 모듈 | coder → code-reviewer | TODO | 빅카인즈 클라이언트 + 시간 윈도 계산. |
+| M6. 요약기 모듈 | coder → code-reviewer | TODO | LLM 호출 + 100자 제약. |
+| M7. 스케줄러/알림 | coder → code-reviewer | TODO | KST 07:00 트리거 + 알림. |
+| M8. UI(Compose) | coder → code-reviewer | TODO | 홈/상세 화면. |
+| M9. 테스트 | test-engineer | TODO | 핵심 시나리오 그린. |
+| M10. 보안·정책 검토 | security-compliance | TODO | 배포 차단 항목 0건. |
+| M11. 빌드·배포 준비 | release-engineer | TODO | 서명·AAB·CI. |
+| M12. 내부 테스트 트랙 업로드 | (사용자) | TODO | Play Console internal testing. |
+
+## 변경 로그
+
+- 2026-05-21: 다중 에이전트 Harness 골격 생성 (M0 DONE).
