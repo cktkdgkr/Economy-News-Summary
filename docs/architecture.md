@@ -6,13 +6,13 @@
 
 ## 1. 설계 원칙
 
-- **다이제스트 생성은 백엔드에서**: NewsData.io 수집과 Anthropic Claude(`claude-haiku-4-5-20251001`) 요약은 Firebase Cloud Functions에서 수행한다. 클라이언트(Android 앱)는 **표시·캐시·알림**만 담당한다. 클라이언트에는 LLM/뉴스 API 키가 일절 존재하지 않는다.
+- **다이제스트 생성은 백엔드에서**: NewsData.io 수집과 Google Gemini(`gemini-2.5-flash`) 요약은 Firebase Cloud Functions에서 수행한다. 클라이언트(Android 앱)는 **표시·캐시·알림**만 담당한다. 클라이언트에는 LLM/뉴스 API 키가 일절 존재하지 않는다.
 - **서버 트리거**: 정시성(KST 07:00)은 Cloud Scheduler(`Asia/Seoul`)로 보장한다. 단말 측 정시 알람(WorkManager/AlarmManager)은 사용하지 않으므로 OEM Doze·Android 14 exact alarm 제약과 무관하다.
 - **단방향 데이터 흐름(클라이언트)**: FCM 수신 → UseCase → Repository → Room → UI(Flow 구독).
 - **레이어 격리(클라이언트)**: presentation은 domain에만 의존, domain은 인터페이스만 노출, data가 인터페이스를 구현.
 - **오프라인 우선(클라이언트)**: 최근 30일 다이제스트는 Room에 영속화되어 네트워크/FCM 미수신 시에도 직전 결과 표시 가능.
 - **최소 권한**: 앱은 `INTERNET`, `POST_NOTIFICATIONS`만 사용.
-- **시크릿은 서버에**: NewsData.io 키, Anthropic 키, FCM 서비스 계정 키는 Google Cloud Secret Manager에 보관.
+- **시크릿은 서버에**: NewsData.io 키, Gemini 키(`GEMINI_API_KEY`), FCM 서비스 계정 키는 Google Cloud Secret Manager에 보관.
 
 ---
 
@@ -30,7 +30,7 @@
 |   | tz=Asia/Seoul   |      |                              |   |
 |   +-----------------+      |  buildDailyDigest()          |   |
 |                            |    1. fetch NewsData.io      |---+--> https://newsdata.io
-|                            |    2. summarize via Anthropic |---+--> https://api.anthropic.com
+|                            |    2. summarize via Gemini   |---+--> https://generativelanguage.googleapis.com
 |                            |    3. save digest -> Firestore|   |
 |                            |    4. send FCM topic message  |   |
 |                            +--------+----------------------+   |
@@ -82,9 +82,10 @@ backend/functions/src/
     newsdataClient.ts             (NewsData.io API)
     dto.ts                        (zod 스키마)
   summarize/
-    anthropicClient.ts            (Claude haiku 4.5 호출)
+    geminiClient.ts               (Gemini 2.5 Flash 호출, @google/genai)
     prompts.ts                    (한국어 100자 요약 시스템 프롬프트)
     lengthEnforcer.ts             (80~120자 후처리, 1차 검증)
+    rateLimiter.ts                (10 RPM 토큰 버킷 / 호출 간 ≥7s)
   notify/
     fcm.ts                        (admin.messaging().send)
     payload.ts                    (페이로드 빌더 + 4KB 가드)
@@ -147,9 +148,13 @@ buildDailyDigest()
           ?apikey=*** &country=kr &language=ko &category=business
         - 12h 지연 허용
         - 일 200req 가드(페이지네이션 중단 기준)
-   3. headline, items = anthropicClient.summarize(articles, prompts.SYSTEM)
-        - model = "claude-haiku-4-5-20251001"
+   3. headline, items = geminiClient.summarize(articles, prompts.SYSTEM)
+        - model = "gemini-2.5-flash" (1차)
+        - fallback model = "gemini-2.0-flash" (429/5xx 영구 실패 시)
+        - generationConfig: { maxOutputTokens, temperature }
         - 한국어, 키워드 위주, 100자 제약
+        - 호출 간 ≥7s 슬립(10 RPM 무료 한도 준수) 또는 토큰 버킷 적용
+        - 429 응답 시 지수 백오프(1s, 2s, 4s, 최대 3회)
    4. lengthEnforcer.enforce(headline, {min:80, max:120})   // 1차 검증
    5. firestoreRepo.upsert("digests/" + date_kst, digest)   // expiresAt = +90d
    6. fcm.send(payloadBuilder.build(digest))                // topic: economy-news
@@ -162,8 +167,8 @@ buildDailyDigest()
 | --- | --- |
 | NewsData.io 전체 실패 | 다이제스트 미생성, Cloud Scheduler 재시도 의존, 구조화 로그 |
 | NewsData.io 일부 페이지 실패 | 수집된 분량으로 진행, 로그에 누락 명시 |
-| Anthropic 헤드라인 실패 | 다이제스트 미생성, 재시도 후 실패 시 알림 미발송 |
-| Anthropic 항목별 요약 일부 실패 | 해당 항목은 원문 제목으로 대체, 전체 진행 |
+| Gemini 헤드라인 실패 | 1차 `gemini-2.5-flash` 재시도(지수 백오프, 최대 3회) → 영구 실패 시 2차 `gemini-2.0-flash` 폴백. 모두 실패 시 다이제스트 미생성·알림 미발송 |
+| Gemini 항목별 요약 일부 실패 | 해당 항목은 원문 제목으로 대체, 전체 진행 |
 | Firestore 저장 실패 | 다이제스트 미발송, Cloud Scheduler 재시도 |
 | FCM 발송 실패 | 구조화 로그, 다음 날 재시도(수동 강제 가능) |
 
@@ -296,13 +301,14 @@ SettingsScreen
 | 자산 | 위협 | 대응 |
 | --- | --- | --- |
 | NewsData.io API 키 | 디컴파일/스니핑 | **클라이언트에 키 없음**. Google Cloud Secret Manager 저장, Functions `defineSecret()`로 접근. |
-| Anthropic API 키 | 디컴파일/스니핑 | **클라이언트에 키 없음**. Secret Manager 저장. |
+| Gemini API 키 | 디컴파일/스니핑 | **클라이언트에 키 없음**. Secret Manager(`GEMINI_API_KEY`) 저장. |
 | FCM 서비스 계정 키 | 깃 커밋, CI 노출 | Secret Manager + CI GitHub Secrets, `.gitignore` 검증, 키 회전 절차 문서화. |
 | 네트워크(앱↔FCM, 앱↔Functions) | MITM, TLS downgrade | `usesCleartextTraffic=false`, OkHttp `ConnectionSpec.MODERN_TLS`. 인증서 핀닝은 회전 부담을 고려해 옵션 처리. |
 | FCM 페이로드 위변조 | data message 위조 | Firebase FCM은 서비스 계정 인증 필수 → 외부에서 같은 토픽으로 전송 불가. 추가로 페이로드에 `schema_version`/필드 검증. |
 | 폴백 fetch 엔드포인트 | 익명 남용 | App Check 의무화(T-A10/T-B09 채택 시). |
 | 알림 권한 남용 | Android 13+ 거부 시 무알림 | 첫 진입 시 권한 안내, 거부 시 Settings에서 재요청 경로. |
-| 사용자 데이터 | 개인정보 수집(현재 가정: 없음) | 분석 SDK 미도입. FCM 토큰은 토픽 구독에 사용(개별 토큰 저장 없음). |
+| 사용자 데이터 | 개인정보 수집(현재 가정: 없음) | 분석 SDK 미도입. FCM 토큰은 토픽 구독에 사용(개별 토큰 저장 없음). **LLM(Gemini)에 보내는 데이터는 NewsData.io의 공개 description뿐이며 사용자 식별 정보는 포함되지 않음.** |
+| Gemini 무료 티어 학습 사용 | AI Studio 무료 티어는 입출력 데이터가 Google 모델 학습에 사용될 수 있음 | LLM 입력에 사용자 식별 정보를 일절 포함하지 않음(공개 뉴스 description만 전송). 향후 민감 데이터 처리 필요 시 유료 티어 또는 Vertex AI로 전환 검토. |
 | 비용 폭증 | LLM/Functions 호출 폭증 | GCP 예산 알림($1~5) + Cloud Functions max instances 제한 + Cloud Scheduler 단일 trigger. |
 
 ---
@@ -314,7 +320,7 @@ SettingsScreen
 | 뉴스 소스 | **NewsData.io** | 무료 플랜, 상업용 허용. `country=kr&language=ko&category=business`. 12시간 지연 허용. 일 200req 한도. 근거: `docs/research/q13-naver-news.md` 4절. |
 | 서버리스 백엔드 | **Firebase Cloud Functions 2nd gen + Cloud Scheduler + FCM** | 월 $0(Blaze 무료 한도 내). Asia/Seoul 타임존 직접 지원. 런타임 Node.js 20 LTS. 근거: `docs/research/q14-serverless-backend.md`. |
 | 알림 트리거 | **Cloud Scheduler → Cloud Functions → FCM data message** | 단말 측 정시 알람 미사용. |
-| 요약 LLM | **Anthropic Claude** | 모델 ID 기본값 `claude-haiku-4-5-20251001`. 백엔드 프록시 경유. |
+| 요약 LLM | **Google Gemini 2.5 Flash (AI Studio 무료 티어)** | 1차 모델 `gemini-2.5-flash`, 폴백 `gemini-2.0-flash`. 엔드포인트 `https://generativelanguage.googleapis.com/`(Vertex AI 아님). SDK `@google/genai`. 환경변수 `GEMINI_API_KEY`. 한도 1,500 RPD / 10 RPM / 250k TPM. 한국 대상 앱 상업용 허용. 백엔드 프록시 경유. 근거: `docs/research/q15-free-llm-providers.md`. |
 | 푸시 전달 | **Firebase Cloud Messaging (topic: `economy-news`)** | data-only 메시지. 발송 무제한 무료. |
 | 시크릿 보관 | **Google Cloud Secret Manager** | `defineSecret()` API 접근. |
 | 앱 클라이언트 | **Kotlin + Jetpack Compose + Material 3** | minSdk=26, targetSdk=최신(34+). Hilt, Room, Retrofit/OkHttp(폴백용), `androidx.browser`. WorkManager 미사용. |
@@ -340,13 +346,13 @@ SettingsScreen
   - Secret Manager: 사실상 $0(일 1회 접근 수준).
   - Firestore: 무료 한도 내($0 예상, 90일 TTL).
   - NewsData.io: $0(무료 플랜, 일 200req).
-  - Anthropic Claude API: 사용량 과금(앱 1회/일 호출, Q14 조사 기준 월 $0.10 미만 예상).
-  - **합계(인프라)**: 월 $0 수준, LLM 비용만 사용량 종량제.
+  - Google Gemini 2.5 Flash (AI Studio 무료 티어): $0(일 1,500 RPD / 10 RPM 한도 내, 일 호출 5~10건 수준).
+  - **합계(인프라+LLM)**: 월 $0.
 
 ---
 
 ## 10. 후속 확정 사항
 
-- **Q8 개인정보처리방침/데이터 안전 섹션**: 담당 `security-compliance`. 클라이언트는 사용자 식별 데이터를 수집하지 않으며(FCM 토픽 구독만 사용), 백엔드는 NewsData.io에 사용자 식별자를 보내지 않음. 정책 URL과 Play Console 데이터 안전 폼은 보안 검토 단계에서 확정.
+- **Q8 개인정보처리방침/데이터 안전 섹션**: 담당 `security-compliance`. 클라이언트는 사용자 식별 데이터를 수집하지 않으며(FCM 토픽 구독만 사용), 백엔드는 NewsData.io·Gemini API에 사용자 식별자를 보내지 않음(LLM 입력은 공개 뉴스 description만). 단, Gemini 무료 티어 학습 사용 가능성은 데이터 안전 폼·개인정보처리방침에 명시 검토. 정책 URL과 Play Console 데이터 안전 폼은 보안 검토 단계에서 확정.
 - **App Check 도입**: T-B09 폴백 엔드포인트를 사용할지에 따라 결정. 페이로드 4KB 내로 일관 가능하면 보류.
-- **GCP 프로젝트/시크릿 운영자 책임**: release-engineer가 M11에서 문서화(키 회전 주기, 콘솔 접근 권한자).
+- **GCP 프로젝트/시크릿 운영자 책임**: release-engineer가 M11에서 문서화(키 회전 주기, 콘솔 접근 권한자). `GEMINI_API_KEY`는 Google AI Studio 콘솔에서 발급·관리.

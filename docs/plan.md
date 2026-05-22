@@ -1,6 +1,6 @@
 # 구현 계획 (Plan)
 
-> 본 계획은 외부 의존성 확정(2026-05-22) 결과를 반영한 단일 채택안 기반 구현 계획이다. NewsData.io(뉴스 소스) + Firebase Cloud Functions 2nd gen + Cloud Scheduler + FCM(백엔드) + Anthropic Claude `claude-haiku-4-5-20251001`(요약 LLM)을 사용한다. 다이제스트 생성은 백엔드에서 수행하고, Android 앱은 FCM 수신·표시·캐시·알림만 담당한다.
+> 본 계획은 외부 의존성 확정(2026-05-22) 결과를 반영한 단일 채택안 기반 구현 계획이다. NewsData.io(뉴스 소스) + Firebase Cloud Functions 2nd gen + Cloud Scheduler + FCM(백엔드) + Google Gemini 2.5 Flash(요약 LLM, AI Studio 무료 티어, SDK `@google/genai`)를 사용한다. 다이제스트 생성은 백엔드에서 수행하고, Android 앱은 FCM 수신·표시·캐시·알림만 담당한다.
 >
 > 저장소는 두 트리로 구성한다.
 >
@@ -19,11 +19,11 @@
 | --- | --- | --- | --- | --- |
 | T-B01 | Firebase 프로젝트 + Functions 스캐폴드(Node.js + TS) | — | `firebase deploy --only functions`(에뮬레이터) 통과, `helloWorld` 함수 호출 성공 | Blaze 플랜 전환 누락, 권한 |
 | T-B02 | NewsData.io 클라이언트 + KST 윈도 계산 | T-B01 | 모킹 응답으로 `kst-12h` 윈도 내 기사 N건 조회 단위테스트 그린, 쿼터 한도(200req/일) 가드 | 응답 스키마 변경 |
-| T-B03 | Anthropic Claude 클라이언트 + 100자 후처리 + 프롬프트 | T-B01 | 모킹 응답으로 헤드라인 + 항목별 요약 생성, `enforceSummaryLength` 80~120자 보장 단위테스트 그린 | 모델 응답 길이 변동 |
-| T-B04 | 다이제스트 빌드 함수(수집→요약→Firestore 저장) | T-B02, T-B03 | 통합 테스트(에뮬레이터): NewsData mock + Anthropic mock → Firestore에 다이제스트 1건 영속, 부분 실패 허용 | 트랜잭션 누락 |
+| T-B03 | Google Gemini 클라이언트 + 100자 후처리 + 프롬프트 | T-B01 | 모킹 응답으로 헤드라인 + 항목별 요약 생성, `enforceSummaryLength` 80~120자 보장 단위테스트 그린, 10 RPM 토큰 버킷 단위테스트 그린 | 모델 응답 길이 변동, 무료 한도 초과 |
+| T-B04 | 다이제스트 빌드 함수(수집→요약→Firestore 저장) | T-B02, T-B03 | 통합 테스트(에뮬레이터): NewsData mock + Gemini mock → Firestore에 다이제스트 1건 영속, 부분 실패 허용 | 트랜잭션 누락 |
 | T-B05 | Cloud Scheduler KST 07:00 트리거 | T-B04 | `0 7 * * *` Asia/Seoul로 다이제스트 빌드 함수 호출, 수동 트리거로 종단 통과 확인 | 권한·서비스 계정 |
 | T-B06 | FCM 발송(topic `economy-news`) + 페이로드 빌더 | T-B04 | data message 발송 코드 단위테스트, 4KB 한도 체크, 초과 시 폴백 플래그 세팅 | 페이로드 4KB 초과 |
-| T-B07 | 시크릿 관리(Secret Manager: NewsData/Anthropic 키, 서비스 계정) | T-B01 | `defineSecret()`으로 함수 내 접근, 로컬 에뮬레이터 dotenv 분리, 키가 로그에 출력되지 않음 | 키 누출 |
+| T-B07 | 시크릿 관리(Secret Manager: NewsData/Gemini 키, 서비스 계정) | T-B01 | `defineSecret()`으로 함수 내 접근, 로컬 에뮬레이터 dotenv 분리, 키가 로그에 출력되지 않음 | 키 누출 |
 | T-B08 | Functions 단위/통합 테스트 + 에뮬레이터 실행 가이드 | T-B02~T-B06 | `npm test`로 핵심 유닛 그린, 에뮬레이터 시나리오(`README` 또는 `EMULATOR.md`) 작성 | 실환경과 차이 |
 | T-B09 | (선택) 다이제스트 fetch HTTPS 엔드포인트(폴백 B) | T-B04 | App Check 또는 토큰 인증으로 보호된 `getLatestDigest` 호출 성공 | 인증 누락 |
 
@@ -79,21 +79,24 @@
   - [ ] MockWebServer/nock 단위테스트 ≥ 5 케이스.
 - **위험**: 응답 스키마 변경 → DTO 검증으로 fail-fast.
 
-### T-B03 Anthropic Claude 클라이언트 + 100자 후처리 + 프롬프트
+### T-B03 Google Gemini 클라이언트 + 100자 후처리 + 프롬프트
 
 - **목적**: 기사 집합을 단일 한국어 헤드라인(80~120자) + 항목별 짧은 요약으로 변환.
 - **변경 대상**:
-  - `backend/functions/src/summarize/anthropicClient.ts` — `Anthropic SDK` 또는 fetch 기반 호출(모델 ID `claude-haiku-4-5-20251001`).
+  - `backend/functions/src/summarize/geminiClient.ts` — `@google/genai` SDK 기반 호출(엔드포인트 `https://generativelanguage.googleapis.com/`, Vertex AI 아님). 모델 ID `gemini-2.5-flash`(1차), `gemini-2.0-flash`(폴백).
   - `backend/functions/src/summarize/prompts.ts` — 한국어, 키워드 위주, 100자 제약 시스템 프롬프트.
   - `backend/functions/src/summarize/lengthEnforcer.ts` — `enforceSummaryLength(text, { min: 80, max: 120 })` (코드포인트 기준, 줄바꿈 제거).
-  - 테스트: `tests/lengthEnforcer.test.ts`, `tests/anthropicClient.test.ts`.
+  - `backend/functions/src/summarize/rateLimiter.ts` — 10 RPM 토큰 버킷(호출 사이 ≥7초 슬립).
+  - 테스트: `tests/lengthEnforcer.test.ts`, `tests/geminiClient.test.ts`, `tests/rateLimiter.test.ts`.
 - **의존**: T-B01.
 - **완료 기준**:
-  - [ ] 기본 모델 ID = `claude-haiku-4-5-20251001`(상수로 분리, 환경변수 override 가능).
+  - [ ] 기본 모델 ID = `gemini-2.5-flash`(상수로 분리, 환경변수 override 가능). 폴백 모델 = `gemini-2.0-flash`.
+  - [ ] 호출 파라미터: `generationConfig.maxOutputTokens`, `generationConfig.temperature`(보수적 기본값).
   - [ ] `enforceSummaryLength` 케이스: 짧음(<80)/길음(>120)/이모지/한자/줄바꿈/공백/한자혼용/문장부호 ≥ 8건.
-  - [ ] 호출 실패(429/타임아웃) 지수 백오프 + 최대 2회 재시도.
-  - [ ] 키는 코드/로그에 노출되지 않음(Secret Manager).
-- **위험**: 모델 출력 길이 편차 → 후처리 단계에서 잘라내기/패딩 정책 명시.
+  - [ ] 호출 실패(429/5xx/타임아웃) 지수 백오프 1s, 2s, 4s, **최대 3회** 재시도. 영구 실패 시 `gemini-2.0-flash`로 폴백.
+  - [ ] 호출 사이 ≥7초 슬립 또는 토큰 버킷으로 10 RPM 무료 한도 준수.
+  - [ ] 키(`GEMINI_API_KEY`)는 코드/로그에 노출되지 않음(Secret Manager).
+- **위험**: 모델 출력 길이 편차 → 후처리 단계에서 잘라내기/패딩 정책 명시. 무료 티어 한도 초과 시 폴백 모델로 자동 전환(같은 키, 한도 별도).
 
 ### T-B04 다이제스트 빌드 함수(수집→요약→Firestore 저장)
 
@@ -102,7 +105,7 @@
   - `backend/functions/src/digest/buildDailyDigest.ts` — onSchedule 이전 단계의 순수 로직(테스트 가능).
   - `backend/functions/src/digest/firestoreRepo.ts` — `digests/{yyyy-MM-dd}` 문서 저장(KST 기준 date key).
   - `backend/functions/src/digest/model.ts` — `DailyDigest`(headline, items[], windowStart/End, createdAt, articleCount).
-  - 테스트: `tests/buildDailyDigest.test.ts`(NewsData mock + Anthropic mock).
+  - 테스트: `tests/buildDailyDigest.test.ts`(NewsData mock + Gemini mock).
 - **의존**: T-B02, T-B03.
 - **완료 기준**:
   - [ ] 통합 테스트: 기사 K건 → 다이제스트 1건 Firestore 영속.
@@ -141,11 +144,11 @@
 
 ### T-B07 시크릿 관리
 
-- **목적**: NewsData.io 키, Anthropic API 키, FCM 서비스 계정을 안전하게 보관.
+- **목적**: NewsData.io 키, Gemini API 키, FCM 서비스 계정을 안전하게 보관.
 - **변경 대상**:
-  - `backend/functions/src/secrets.ts` — `defineSecret('NEWSDATA_API_KEY')`, `defineSecret('ANTHROPIC_API_KEY')`.
+  - `backend/functions/src/secrets.ts` — `defineSecret('NEWSDATA_API_KEY')`, `defineSecret('GEMINI_API_KEY')`.
   - `backend/.env.local.example`, `backend/functions/.gitignore` — 로컬 개발용 분리.
-  - `backend/SECRETS.md` 또는 README 절 — 운영자가 키 등록하는 절차.
+  - `backend/SECRETS.md` 또는 README 절 — 운영자가 키 등록하는 절차(Google AI Studio 콘솔에서 `GEMINI_API_KEY` 발급 절차 포함).
 - **의존**: T-B01.
 - **완료 기준**:
   - [ ] Secret Manager에 키 저장, 함수가 `runWith({ secrets: [...] })`로 접근.
@@ -371,7 +374,7 @@ FCM data message(텍스트 키-값만, 모든 값은 문자열):
 ## 후속 확정 필요(Open items)
 
 - **Q8 개인정보처리방침/데이터 안전**: 담당 `security-compliance`. T-A08 Settings의 정책 URL 플레이스홀더는 보안 검토 단계에서 실제 URL로 교체.
-- **시크릿 운영자 책임**: GCP 프로젝트 소유자, Anthropic 콘솔 키 관리자, Play Console 서명 키 관리자 지정. release-engineer가 M11에서 문서화.
+- **시크릿 운영자 책임**: GCP 프로젝트 소유자, Google AI Studio(`GEMINI_API_KEY`) 관리자, Play Console 서명 키 관리자 지정. release-engineer가 M11에서 문서화.
 - **App Check 도입 여부**: T-B09/T-A10 선택 작업 단위에 영향. 페이로드 4KB 내로 일관 가능하면 보류 가능. 보안 검토에서 최종 확정.
 
 ---
@@ -395,6 +398,6 @@ FCM data message(텍스트 키-값만, 모든 값은 문자열):
 - `firebase-functions` 2nd gen + `firebase-admin`.
 - HTTP 클라이언트: `node-fetch` 또는 `undici`.
 - 스키마 검증: `zod`(권장).
-- Anthropic SDK(`@anthropic-ai/sdk`) — 모델 ID 기본값 `claude-haiku-4-5-20251001`.
+- Google Gemini SDK(`@google/genai`, 최신 안정) — 1차 모델 ID 기본값 `gemini-2.5-flash`, 폴백 `gemini-2.0-flash`. AI Studio 무료 티어(`https://generativelanguage.googleapis.com/`, Vertex AI 아님). 환경변수 `GEMINI_API_KEY`.
 - 테스트: `jest` 또는 `vitest`.
 - 린트: ESLint + `@typescript-eslint`.
