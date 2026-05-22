@@ -1,117 +1,217 @@
 # 아키텍처 설계 (Architecture)
 
-> 본 문서는 사양(`docs/project-spec.md`)과 미해결 질문(`docs/open-questions.md`)을 입력으로 한 초기 아키텍처 설계다. researcher의 Q1~Q4 결과에 따라 일부 구성요소(특히 데이터 소스 어댑터, 요약기 호출 위치, 알림 트리거)는 **분기 확정**된다.
+> 본 문서는 사양(`docs/project-spec.md`)과 외부 의존성 확정 결과(`docs/research/q13-naver-news.md`, `docs/research/q14-serverless-backend.md`, Q3/Q4/Q9 RESOLVED)를 반영한 단일 채택 아키텍처다. 분기 항목은 모두 제거되었다.
 
 ---
 
 ## 1. 설계 원칙
 
-- **단방향 데이터 흐름**: WorkManager(또는 FCM 수신기) → UseCase → Repository → DataSource(원격/로컬) → DB → UI(Flow 구독).
-- **레이어 격리**: presentation은 domain에만 의존, domain은 인터페이스만 노출, data가 인터페이스를 구현.
-- **테스트 가능성**: 도메인 로직(시간 윈도 계산, 요약 후처리)은 순수 함수. 외부 의존성은 인터페이스로 추상화.
-- **오프라인 우선**: 마지막 성공 다이제스트는 Room에 영속화되어 네트워크 실패 시에도 표시 가능.
-- **최소 권한**: `INTERNET`, `POST_NOTIFICATIONS`만 사용. 백그라운드 위치/저장소 등 추가 권한 없음.
+- **다이제스트 생성은 백엔드에서**: NewsData.io 수집과 Anthropic Claude(`claude-haiku-4-5-20251001`) 요약은 Firebase Cloud Functions에서 수행한다. 클라이언트(Android 앱)는 **표시·캐시·알림**만 담당한다. 클라이언트에는 LLM/뉴스 API 키가 일절 존재하지 않는다.
+- **서버 트리거**: 정시성(KST 07:00)은 Cloud Scheduler(`Asia/Seoul`)로 보장한다. 단말 측 정시 알람(WorkManager/AlarmManager)은 사용하지 않으므로 OEM Doze·Android 14 exact alarm 제약과 무관하다.
+- **단방향 데이터 흐름(클라이언트)**: FCM 수신 → UseCase → Repository → Room → UI(Flow 구독).
+- **레이어 격리(클라이언트)**: presentation은 domain에만 의존, domain은 인터페이스만 노출, data가 인터페이스를 구현.
+- **오프라인 우선(클라이언트)**: 최근 30일 다이제스트는 Room에 영속화되어 네트워크/FCM 미수신 시에도 직전 결과 표시 가능.
+- **최소 권한**: 앱은 `INTERNET`, `POST_NOTIFICATIONS`만 사용.
+- **시크릿은 서버에**: NewsData.io 키, Anthropic 키, FCM 서비스 계정 키는 Google Cloud Secret Manager에 보관.
 
 ---
 
 ## 2. 레이어 구성
 
+### 2-1. 전체 시스템 컴포넌트 다이어그램
+
 ```
 +---------------------------------------------------------------+
-|  presentation (Jetpack Compose, Material 3)                   |
-|  - HomeScreen / DigestDetailScreen / SettingsScreen           |
-|  - ViewModel (StateFlow)                                      |
+|                       Google Cloud (GCP)                      |
+|                                                               |
+|   +-----------------+      +-----------------------------+    |
+|   | Cloud Scheduler | ---> | Cloud Functions 2nd gen      |   |
+|   | 0 7 * * *       |      |   (Node.js 20 + TS)          |   |
+|   | tz=Asia/Seoul   |      |                              |   |
+|   +-----------------+      |  buildDailyDigest()          |   |
+|                            |    1. fetch NewsData.io      |---+--> https://newsdata.io
+|                            |    2. summarize via Anthropic |---+--> https://api.anthropic.com
+|                            |    3. save digest -> Firestore|   |
+|                            |    4. send FCM topic message  |   |
+|                            +--------+----------------------+   |
+|                                     |                          |
+|                            +--------v---------+ +------------+ |
+|                            | Cloud Firestore  | | Secret Mgr | |
+|                            | digests/{date}   | | API keys   | |
+|                            | 90d TTL          | +------------+ |
+|                            +------------------+                |
+|                                                                |
+|                            +-------------------+               |
+|                            | Firebase Cloud    |               |
+|                            | Messaging (FCM)   |               |
+|                            | topic: economy-   |               |
+|                            |   news            |               |
+|                            +---------+---------+               |
++--------------------------------------|-------------------------+
+                                       |
+                                       v   (data-only message)
 +---------------------------------------------------------------+
-                 |  (UiState, Intent)
-                 v
-+---------------------------------------------------------------+
-|  domain (Pure Kotlin)                                         |
-|  - Models: Article, ArticleSummary, DailyDigest               |
-|  - UseCases: BuildDailyDigestUseCase, GetLatestDigestUseCase, |
-|              ObserveDigestsUseCase                            |
-|  - Ports(interface): NewsRepository, SummarizerPort,          |
-|              DigestRepository, NotificationPort, ClockPort    |
-+---------------------------------------------------------------+
-                 |  (interfaces)
-                 v
-+---------------------------------------------------------------+
-|  data                                                         |
-|  - remote: BigKindsRemoteDataSource (API or Scraping; Q1/Q2)  |
-|            LlmRemoteDataSource (Q4 분기)                       |
-|  - local : Room DAOs (ArticleDao, DigestDao, SummaryDao)      |
-|            DataStore<Preferences>                              |
-|  - repository: NewsRepositoryImpl, DigestRepositoryImpl       |
-+---------------------------------------------------------------+
-                 |
-                 v
-+---------------------------------------------------------------+
-|  platform                                                     |
-|  - WorkManager(DailyDigestWorker) / FCM (조건부, Q3 분기)      |
-|  - NotificationManagerCompat (Notification Channel)           |
-|  - Hilt (DI 컨테이너)                                          |
+|                       Android 앱                              |
+|                                                               |
+|  EconomyFcmService(FirebaseMessagingService)                  |
+|     -> IngestDigestUseCase                                    |
+|         -> PushPayloadParser                                  |
+|         -> SummaryLengthEnforcer(2차 검증)                    |
+|         -> DigestRepository.upsert + purgeOlderThan(30d)      |
+|         -> DailyDigestNotifier.notify()                       |
+|                                                               |
+|  Compose UI: HomeScreen / DigestDetailScreen / SettingsScreen |
+|     -> ObserveLatestDigestUseCase  (Flow<DailyDigest>)        |
+|     -> DigestRepositoryImpl(Room)                             |
+|                                                               |
+|  (선택) DigestApi(HTTPS) <-> Functions getLatestDigest         |
+|     - 페이로드 4KB 초과 시 폴백                                |
 +---------------------------------------------------------------+
 ```
 
-### 모듈 구성
-- 시작: 단일 모듈 `:app`.
-- 추후 분리 권고(작업 단위가 커질 때):
-  - `:core-common`(시간 유틸, 결과 타입), `:core-network`(OkHttp/Retrofit 공통), `:core-database`(Room).
-  - `:feature-digest`(홈/상세 UI + UseCase), `:feature-settings`.
-- 모듈 분리는 T-08 이후 별도 리팩토링 작업으로 고려(초기에는 패키지 분리만).
+### 2-2. Backend 레이어 (Node.js + TypeScript)
+
+```
+backend/functions/src/
+  index.ts                        (onSchedule, HTTPS handlers)
+  digest/
+    buildDailyDigest.ts           (오케스트레이션: collect -> summarize -> persist -> notify)
+    firestoreRepo.ts              (digests/{date_kst})
+    model.ts                      (DailyDigest, DigestItem)
+  news/
+    newsdataClient.ts             (NewsData.io API)
+    dto.ts                        (zod 스키마)
+  summarize/
+    anthropicClient.ts            (Claude haiku 4.5 호출)
+    prompts.ts                    (한국어 100자 요약 시스템 프롬프트)
+    lengthEnforcer.ts             (80~120자 후처리, 1차 검증)
+  notify/
+    fcm.ts                        (admin.messaging().send)
+    payload.ts                    (페이로드 빌더 + 4KB 가드)
+  time/
+    kstWindow.ts                  (Asia/Seoul 24h 윈도)
+  api/
+    getLatestDigest.ts            (선택, App Check 보호)
+  secrets.ts                      (defineSecret)
+```
+
+### 2-3. Android 레이어 (Kotlin + Compose)
+
+```
+android/app/src/main/java/.../
+  presentation/
+    home/ HomeScreen, HomeViewModel
+    detail/ DigestDetailScreen, DetailViewModel
+    settings/ SettingsScreen, SettingsViewModel
+    navigation/ NavGraph, DeepLinks
+    common/ UiState
+  domain/
+    model/ DailyDigest, DigestItem, Source
+    port/ DigestRepository, NotificationPort, ClockPort, DigestFetchPort
+    usecase/ ObserveLatestDigestUseCase, IngestDigestUseCase
+    text/ SummaryLengthEnforcer
+  data/
+    remote/ PushPayloadParser, DigestApi (선택), DigestFetcher (선택)
+    local/ AppDatabase, DigestDao, DigestEntity, DigestItemEntity, SettingsDataStore
+    repository/ DigestRepositoryImpl
+  platform/
+    notification/ NotificationChannels, DailyDigestNotifier
+  services/
+    EconomyFcmService (FirebaseMessagingService)
+  EconomyNewsApp (Hilt @HiltAndroidApp)
+  MainActivity
+```
+
+### 2-4. 모듈 구성
+
+- 초기: 단일 모듈 `:app`(android), 단일 패키지 `functions`(backend).
+- 향후 분리 권고: `:core-common`(시간 유틸/UiState), `:core-database`(Room), `:feature-digest`, `:feature-settings`. T-A07 이후 별도 리팩토링 작업으로 검토.
 
 ---
 
 ## 3. 데이터 흐름
 
-### 3-1. 일일 다이제스트 생성 (백그라운드)
+### 3-1. 백엔드 다이제스트 빌드 파이프라인 (KST 07:00 trigger)
 
 ```
-[Trigger: KST 07:00]
-  Q3 결과가 (b) WorkManager + 로컬 알림이면:
-    AlarmManager(setExactAndAllowWhileIdle) or WorkManager(PeriodicWork)
-        -> DailyDigestWorker.doWork()
-
-  Q3 결과가 (a) 백엔드 cron + FCM이면:
-    FCM data message 수신 -> EnqueueDigestWorker -> DailyDigestWorker
-
+[Cloud Scheduler] 0 7 * * *  Asia/Seoul
         |
         v
-  BuildDailyDigestUseCase(date = yesterdayKst)
+[Cloud Functions: onSchedule handler]
         |
         v
-  NewsRepository.fetchArticlesInWindow(start, end)
-     -> BigKindsRemoteDataSource (Q1/Q2 분기)
-     -> ArticleDao.upsertAll()
-        |
-        v
-  SummarizerPort.summarizeBatch(articles)
-     -> LlmRemoteDataSource (Q4 분기: 백엔드 프록시 vs 온디바이스)
-     -> 100자 ±20 후처리(LengthEnforcer)
-        |
-        v
-  DigestRepository.save(DailyDigest)
-        |
-        v
-  NotificationPort.notifyDailyDigest(digest)  -- 채널: "daily_digest"
+buildDailyDigest()
+   1. window = yesterdayKstWindow(now)   // [어제 00:00 KST, 오늘 00:00 KST)
+   2. articles = newsdataClient.fetchEconomyNews(window)
+        - GET https://newsdata.io/api/1/news
+          ?apikey=*** &country=kr &language=ko &category=business
+        - 12h 지연 허용
+        - 일 200req 가드(페이지네이션 중단 기준)
+   3. headline, items = anthropicClient.summarize(articles, prompts.SYSTEM)
+        - model = "claude-haiku-4-5-20251001"
+        - 한국어, 키워드 위주, 100자 제약
+   4. lengthEnforcer.enforce(headline, {min:80, max:120})   // 1차 검증
+   5. firestoreRepo.upsert("digests/" + date_kst, digest)   // expiresAt = +90d
+   6. fcm.send(payloadBuilder.build(digest))                // topic: economy-news
+        - 4KB 초과 시 items_json 생략 + payload_overflow=true
 ```
 
-### 3-2. UI 표시 (포그라운드)
+**부분 실패 정책**:
+
+| 실패 단계 | 처리 |
+| --- | --- |
+| NewsData.io 전체 실패 | 다이제스트 미생성, Cloud Scheduler 재시도 의존, 구조화 로그 |
+| NewsData.io 일부 페이지 실패 | 수집된 분량으로 진행, 로그에 누락 명시 |
+| Anthropic 헤드라인 실패 | 다이제스트 미생성, 재시도 후 실패 시 알림 미발송 |
+| Anthropic 항목별 요약 일부 실패 | 해당 항목은 원문 제목으로 대체, 전체 진행 |
+| Firestore 저장 실패 | 다이제스트 미발송, Cloud Scheduler 재시도 |
+| FCM 발송 실패 | 구조화 로그, 다음 날 재시도(수동 강제 가능) |
+
+### 3-2. 클라이언트 FCM 수신 파이프라인
+
+```
+[FCM data message 수신]
+        |
+        v
+EconomyFcmService.onMessageReceived(remoteMessage)
+        |
+        v
+IngestDigestUseCase(payload)
+   1. PushPayloadParser.parse(payload)            // schema_version 검증
+   2. if payload_overflow == true:
+        DigestFetchPort.fetchLatest()             // T-A10/T-B09 (선택)
+   3. SummaryLengthEnforcer.enforce(headline)     // 2차 검증
+   4. DigestRepository.upsert(digest)
+   5. DigestRepository.purgeOlderThan(days=30)
+   6. NotificationPort.notify(digest)
+        - 채널: daily_digest (IMPORTANCE_HIGH)
+        - 본문: headline (80~120자)
+        - 부제목: "원문 N건"
+        - 탭 → economynews://digest/{date_kst}
+```
+
+### 3-3. UI 표시 (포그라운드)
 
 ```
 HomeScreen
    -> HomeViewModel.uiState : StateFlow<HomeUiState>
-   -> ObserveDigestsUseCase()  // Flow<List<DailyDigest>>
-   -> DigestRepositoryImpl.observeAll()  // Room Flow
+   -> ObserveLatestDigestUseCase()  // Flow<DailyDigest?>
+   -> DigestRepositoryImpl.observeLatest()  // Room Flow
 
-DigestDetailScreen(digestId)
+DigestDetailScreen(dateKst)
    -> DetailViewModel
-   -> GetDigestByIdUseCase
-   -> 원문 링크는 Custom Tabs(`androidx.browser`)로 열기
+   -> DigestRepository.getByDate(dateKst)
+   -> 원문 링크는 Custom Tabs(androidx.browser)
+
+SettingsScreen
+   -> 알림 권한 토글(POST_NOTIFICATIONS)
+   -> 알림 시각 표시(고정 07:00 KST, 편집 불가)
+   -> 앱 정보, 개인정보처리방침 링크(Q8에서 확정)
 ```
 
 ---
 
-## 4. 의존성 다이어그램 (ASCII)
+## 4. 의존성 다이어그램 (ASCII, 클라이언트)
 
 ```
                     +-------------------+
@@ -122,84 +222,131 @@ DigestDetailScreen(digestId)
               |                                |
               v                                v
 +---------------------------+    +----------------------------+
-| ObserveDigestsUseCase     |    | BuildDailyDigestUseCase    |
+| ObserveLatestDigestUseCase|    | IngestDigestUseCase        |
 +-------------+-------------+    +--------------+-------------+
               |                                 |
               v                                 v
-     +-----------------+              +-------------------+
-     | DigestRepository|              | NewsRepository    |
-     +--------+--------+              +---------+---------+
+        +-----+----------+               +------+--------+
+        | DigestRepository|              | PushPayload   |
+        | (port)         |               | Parser        |
+        +-----+----------+               +------+--------+
               |                                 |
-              v                                 v
-        +-----+-----+                +----------+----------+
-        | Room DB   |                | BigKindsDataSource  |
-        +-----------+                +----------+----------+
-              ^                                 |
-              |                                 v
-              |                       +---------+----------+
-              +-----------------------+ SummarizerPort     |
-                                      +---------+----------+
-                                                |
-                                                v
-                                      +---------+----------+
-                                      | LlmDataSource (Q4) |
-                                      +--------------------+
+              v                                 |
+        +-----+-----+                           |
+        | Room DB   |<--------------------------+
+        +-----------+
+              ^
+              |
+        +-----+-----+
+        | EconomyFcm|  (FirebaseMessagingService)
+        | Service   |
+        +-----------+
 ```
 
 ---
 
 ## 5. KST 시간 처리 정책
 
-- **저장은 UTC**: 모든 타임스탬프(`Article.publishedAt`, `DailyDigest.windowStart/End`)는 `Instant`(UTC epoch millis)로 저장.
-- **윈도 계산만 KST**: "전일 00:00 ~ 24:00"는 `ZoneId.of("Asia/Seoul")` 기준으로 `LocalDate.minus(1, DAYS)` → `atStartOfDay` → `+1d`로 산출.
-- KST는 DST가 없으므로 `ZonedDateTime.toInstant()`만으로 단순 변환 가능(특이 케이스 없음). 단위 테스트로 보장.
-- 사용자에게 보여주는 표시는 `ZonedDateTime`로 KST 포맷팅.
+- **저장은 UTC**: `created_at_utc`, `published_at_utc` 등 모든 타임스탬프는 UTC ISO8601.
+- **윈도 계산만 KST**: 백엔드 `kstWindow.ts`와 클라이언트 표시 포맷팅에서 `Asia/Seoul`을 사용한다. KST는 DST가 없어 변환 단순.
+- **다이제스트 키**: `digest_id = date_kst (yyyy-MM-dd)`. 동일 일자 재처리는 멱등 upsert.
+- **Cloud Scheduler**: `0 7 * * *` + `timeZone=Asia/Seoul` → KST 07:00 ± 1분 보장(GCP SLA).
 
 ---
 
-## 6. 영속성 스키마(초안)
+## 6. 영속성 스키마
 
-- `articles(id PK, source_id, title, url, body_snippet, published_at_utc, category, fetched_at_utc)`
-- `summaries(article_id FK, summary_text, char_count, model, created_at_utc)`
-- `digests(id PK, window_start_utc, window_end_utc, headline, body_100, created_at_utc)`
-- `digest_articles(digest_id FK, article_id FK, order_index)` — 다이제스트가 인용한 원문 목록.
+### 6-1. Android Room
 
-인덱스: `articles(published_at_utc)`, `digests(window_start_utc)`.
+- `digests` 테이블
+  - `date_kst` TEXT PK (`yyyy-MM-dd`)
+  - `headline` TEXT
+  - `total_count` INTEGER
+  - `created_at_utc` INTEGER (epoch millis)
+  - `payload_overflow` INTEGER (0/1)
+- `digest_items` 테이블
+  - `id` INTEGER PK AUTOINCREMENT
+  - `digest_date_kst` TEXT FK
+  - `order_index` INTEGER
+  - `source` TEXT
+  - `published_at_utc` INTEGER
+  - `title` TEXT
+  - `short_summary` TEXT
+  - `url` TEXT
+- 인덱스: `digests(created_at_utc DESC)`, `digest_items(digest_date_kst, order_index)`.
+- 보관: 최근 30일. 31일 이상 항목은 FCM 수신 시 또는 앱 시작 시 `purgeOlderThan(30)` 호출로 삭제.
+
+### 6-2. Firestore (백엔드)
+
+- 컬렉션 `digests`, 문서 ID = `date_kst` (`yyyy-MM-dd`).
+- 필드:
+  - `date_kst` (string)
+  - `headline` (string, 80~120자)
+  - `total_count` (number)
+  - `items` (array<{ source, published_at_utc, title, short_summary, url }>)
+  - `created_at_utc` (timestamp)
+  - `expires_at` (timestamp, `created_at_utc + 90d`)
+- 보관: 90일. Firestore TTL 정책(`expires_at`) 활성화로 자동 삭제(저장 비용 절감).
+- 인덱스: `created_at_utc DESC` (단일 필드, 기본 제공).
 
 ---
 
-## 7. 위협 모델 초안
+## 7. 위협 모델
 
 | 자산 | 위협 | 대응 |
 | --- | --- | --- |
-| LLM API 키 | 클라이언트 디컴파일·트래픽 스니핑으로 키 추출 | 우선순위 1: **백엔드 프록시**(Q4 결과 (a) 선택 시) → 키는 클라이언트에 미존재. (b) 온디바이스 선택 시: 빌드 시 BuildConfig 주입 + 네트워크 보안 설정 + 키 회전 정책 권고, but 보안상 비권장. `security-compliance` 검토 필요. |
-| 빅카인즈 응답 | TLS downgrade, MITM | `usesCleartextTraffic=false`, OkHttp `ConnectionSpec.MODERN_TLS`, 핀닝은 인증서 회전 부담으로 옵션 처리. |
-| 알림 권한 남용 | OS-13+ 거부 시 무알림 상태에서 사용자 혼란 | 첫 진입 시 권한 안내 화면, 거부 시 인앱 배너로 상태 알림. |
-| 사용자 데이터 | 개인정보 수집(현재 가정: 없음) | 분석 SDK 미도입. 도입 시 Q8에 명시 후 동의 플로우 추가. |
-| 백그라운드 작업 신뢰성 | OEM Doze/배터리 최적화로 지연 | `setExpedited`/`setExactAndAllowWhileIdle` 검토, 사용자에게 배터리 최적화 예외 안내(설치 후 1회). |
+| NewsData.io API 키 | 디컴파일/스니핑 | **클라이언트에 키 없음**. Google Cloud Secret Manager 저장, Functions `defineSecret()`로 접근. |
+| Anthropic API 키 | 디컴파일/스니핑 | **클라이언트에 키 없음**. Secret Manager 저장. |
+| FCM 서비스 계정 키 | 깃 커밋, CI 노출 | Secret Manager + CI GitHub Secrets, `.gitignore` 검증, 키 회전 절차 문서화. |
+| 네트워크(앱↔FCM, 앱↔Functions) | MITM, TLS downgrade | `usesCleartextTraffic=false`, OkHttp `ConnectionSpec.MODERN_TLS`. 인증서 핀닝은 회전 부담을 고려해 옵션 처리. |
+| FCM 페이로드 위변조 | data message 위조 | Firebase FCM은 서비스 계정 인증 필수 → 외부에서 같은 토픽으로 전송 불가. 추가로 페이로드에 `schema_version`/필드 검증. |
+| 폴백 fetch 엔드포인트 | 익명 남용 | App Check 의무화(T-A10/T-B09 채택 시). |
+| 알림 권한 남용 | Android 13+ 거부 시 무알림 | 첫 진입 시 권한 안내, 거부 시 Settings에서 재요청 경로. |
+| 사용자 데이터 | 개인정보 수집(현재 가정: 없음) | 분석 SDK 미도입. FCM 토큰은 토픽 구독에 사용(개별 토큰 저장 없음). |
+| 비용 폭증 | LLM/Functions 호출 폭증 | GCP 예산 알림($1~5) + Cloud Functions max instances 제한 + Cloud Scheduler 단일 trigger. |
 
 ---
 
-## 8. 외부 의존성 (분기 항목)
+## 8. 외부 의존성 (확정)
 
-| 영역 | 후보 A | 후보 B | 결정 근거 |
-| --- | --- | --- | --- |
-| 뉴스 수집 | 빅카인즈 Open API | HTML 스크래핑 | Q1/Q2(researcher) |
-| 알림 트리거 | 백엔드 cron + FCM | 단말 WorkManager + 로컬 알림 | Q3(researcher) |
-| 요약기 호출 위치 | 백엔드 프록시 | 온디바이스 직접 호출 | Q4(researcher → security-compliance) |
-| LLM 공급자 | OpenAI / Anthropic / Google | 한국어 특화(예: HyperCLOVA X) | Q9(신규, planner 후속) |
+| 영역 | 채택 | 비고 |
+| --- | --- | --- |
+| 뉴스 소스 | **NewsData.io** | 무료 플랜, 상업용 허용. `country=kr&language=ko&category=business`. 12시간 지연 허용. 일 200req 한도. 근거: `docs/research/q13-naver-news.md` 4절. |
+| 서버리스 백엔드 | **Firebase Cloud Functions 2nd gen + Cloud Scheduler + FCM** | 월 $0(Blaze 무료 한도 내). Asia/Seoul 타임존 직접 지원. 런타임 Node.js 20 LTS. 근거: `docs/research/q14-serverless-backend.md`. |
+| 알림 트리거 | **Cloud Scheduler → Cloud Functions → FCM data message** | 단말 측 정시 알람 미사용. |
+| 요약 LLM | **Anthropic Claude** | 모델 ID 기본값 `claude-haiku-4-5-20251001`. 백엔드 프록시 경유. |
+| 푸시 전달 | **Firebase Cloud Messaging (topic: `economy-news`)** | data-only 메시지. 발송 무제한 무료. |
+| 시크릿 보관 | **Google Cloud Secret Manager** | `defineSecret()` API 접근. |
+| 앱 클라이언트 | **Kotlin + Jetpack Compose + Material 3** | minSdk=26, targetSdk=최신(34+). Hilt, Room, Retrofit/OkHttp(폴백용), `androidx.browser`. WorkManager 미사용. |
 
-researcher 결과 수신 후 본 문서 §3, §7, §8을 갱신한다.
+### "100자 내외" 정의(Q6 확정)
 
-**Q6 잠정 정의(planner)**: "100자 내외" = 공백 포함 한글 코드포인트 기준 **80~120자**, 줄바꿈 제거, 키워드 중심 문체. 단일 함수 `SummaryLengthEnforcer`로 캡슐화하여 변경 시 한 곳만 수정.
-
-**추가 결정 사항(`docs/open-questions.md` Q9~Q12)**: LLM 공급자 선택, 알림 본문 정책, 다이제스트 보관 기간, 본문 짧을 시 외부 크롤링 허용 여부.
+- 공백 포함 한글 코드포인트 기준 **80~120자**.
+- 줄바꿈 제거. 키워드 중심 문체.
+- **백엔드(`lengthEnforcer.ts`)에서 1차 검증, 클라이언트(`SummaryLengthEnforcer.kt`)에서 표시 직전 2차 검증**.
 
 ---
 
 ## 9. 비기능 보장
 
-- **정시성**: KST 07:00 ± 5분. WorkManager 단독 사용 시 OEM별 편차 대비 알람 폴백 검토.
-- **오프라인**: `DigestRepository.observeAll()`이 Room을 단일 진실 소스로 노출 → 네트워크 무관하게 최신 캐시 표시.
-- **접근성**: Compose `Text` 폰트 스케일 따름, 색 대비 WCAG AA 목표.
-- **로깅**: 디버그 빌드에서만 OkHttp `HttpLoggingInterceptor.Level.BODY`, 릴리스는 `NONE`.
+- **정시성**: Cloud Scheduler가 KST 07:00 `Asia/Seoul` cron으로 호출하므로 KST 07:00 ± 1분 보장. OEM Doze/Android 14 exact alarm 제약 무관(서버 트리거). 정시성 SLA는 GCP Cloud Scheduler에 위임.
+- **오프라인**: Room 최근 30일 캐시를 단일 진실 소스로 노출(Flow). 네트워크/FCM 미수신과 무관하게 최신 캐시 표시.
+- **접근성**: Compose 폰트 스케일 따름, 색 대비 WCAG AA 목표.
+- **로깅**: 디버그 빌드에서만 OkHttp `HttpLoggingInterceptor.Level.BODY`, 릴리스는 `NONE`. 백엔드는 구조화 로그(JSON) + Cloud Logging.
+- **비용**(`docs/research/q14-serverless-backend.md` 기준 인용):
+  - Cloud Scheduler: $0(3 job 무료 한도 내, 1 job 사용).
+  - Cloud Functions: $0(2,000,000 호출/월 무료 한도, 일 1회 부하).
+  - FCM: $0(발송 무제한 무료).
+  - Secret Manager: 사실상 $0(일 1회 접근 수준).
+  - Firestore: 무료 한도 내($0 예상, 90일 TTL).
+  - NewsData.io: $0(무료 플랜, 일 200req).
+  - Anthropic Claude API: 사용량 과금(앱 1회/일 호출, Q14 조사 기준 월 $0.10 미만 예상).
+  - **합계(인프라)**: 월 $0 수준, LLM 비용만 사용량 종량제.
+
+---
+
+## 10. 후속 확정 사항
+
+- **Q8 개인정보처리방침/데이터 안전 섹션**: 담당 `security-compliance`. 클라이언트는 사용자 식별 데이터를 수집하지 않으며(FCM 토픽 구독만 사용), 백엔드는 NewsData.io에 사용자 식별자를 보내지 않음. 정책 URL과 Play Console 데이터 안전 폼은 보안 검토 단계에서 확정.
+- **App Check 도입**: T-B09 폴백 엔드포인트를 사용할지에 따라 결정. 페이로드 4KB 내로 일관 가능하면 보류.
+- **GCP 프로젝트/시크릿 운영자 책임**: release-engineer가 M11에서 문서화(키 회전 주기, 콘솔 접근 권한자).
