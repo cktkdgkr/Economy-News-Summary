@@ -1,0 +1,11 @@
+node_modules/
+lib/
+
+# 환경 변수 (절대 커밋 금지)
+.env
+.env.local
+.env.*.local
+# .env.local.example 은 추적 허용
+
+*.log
+.runtimeconfig.json

@@ -1,0 +1,17 @@
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+ui-debug.log
+
+# 환경 변수 (로컬 개발용 시크릿 — 절대 커밋 금지)
+.env
+.env.local
+.env.*.local
+# .env.local.example 은 추적 허용
+
+# 런타임 설정 (에뮬레이터 로컬 오버라이드)
+.runtimeconfig.json
+
+# 로그
+*.log
