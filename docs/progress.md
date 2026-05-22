@@ -7,9 +7,9 @@
 | 단계 | 담당 에이전트 | 상태 | 비고 |
 | --- | --- | --- | --- |
 | M0. Harness 구성 | (오케스트레이터 직접) | DONE | 본 커밋에서 완료. `.claude/agents/`, `docs/` 골격 생성. |
-| M1. 외부 의존성 조사 | researcher | IN_PROGRESS | Q2/Q3/Q4 RESOLVED, Q1 PARTIAL(쿼터·상업 앱 발급 가능 여부 미확인). Q9·Q12 후속 조사 대기. |
-| M2. 계획·아키텍처 수립 | planner | IN_PROGRESS | `docs/plan.md`·`docs/architecture.md` 초안 작성 완료. researcher Q1~Q4 결과 미수신으로 T-04/T-05/T-07 분기 미확정. 신규 결정 사항 Q9~Q12 추가. |
-| M3. 사용자 승인 | (오케스트레이터 ↔ 사용자) | TODO | M2 결과 검토 및 결정 사항 확정. |
+| M1. 외부 의존성 조사 | researcher | IN_PROGRESS | Q2/Q3/Q4/Q9 RESOLVED, Q1 DEPRIORITIZED(상업용 앱 발급 불확실), Q12 OBSOLETE. **Q13(네이버 뉴스 대체)·Q14(서버리스 선택) 신설 → 진행 중**. |
+| M2. 계획·아키텍처 수립 | planner | IN_PROGRESS | `docs/plan.md`·`docs/architecture.md` 초안 작성 완료. Q13 결과에 따라 T-04(뉴스 수집) 재정의 필요. |
+| M3. 사용자 승인 | (오케스트레이터 ↔ 사용자) | IN_PROGRESS | 1차 결정 수신(2026-05-22): 네이버 뉴스 검토 / 서버리스 선호 / Claude 고정. Q13·Q14 조사 후 재승인. |
 | M4. 프로젝트 스캐폴드 | coder → code-reviewer | TODO | Android 프로젝트 초기 생성, Gradle/Compose 설정. |
 | M5. 뉴스 수집 모듈 | coder → code-reviewer | TODO | 빅카인즈 클라이언트 + 시간 윈도 계산. |
 | M6. 요약기 모듈 | coder → code-reviewer | TODO | LLM 호출 + 100자 제약. |
@@ -25,3 +25,4 @@
 - 2026-05-21: 다중 에이전트 Harness 골격 생성 (M0 DONE).
 - 2026-05-21: planner가 `docs/plan.md`(T-01~T-12), `docs/architecture.md` 초안 작성. open-questions Q9~Q12 추가. M2 IN_PROGRESS(분기 미확정).
 - 2026-05-21: researcher Q1~Q4 조사 완료. `docs/research/q1~q4-*.md` 4건 추가. Q2/Q3/Q4 RESOLVED, Q1 PARTIAL. 빅카인즈 스크래핑 불가·FCM/백엔드 프록시 권장 결론. M3 사용자 결정 대기(빅카인즈 API 신청 가능 여부 + 백엔드 운영 가능 여부).
+- 2026-05-22: 사용자 1차 결정 수신 — (1) 빅카인즈 보류, **네이버 뉴스 대체 가능성 조사 지시** → Q1 DEPRIORITIZED, Q13 신설. (2) 백엔드는 **최소 비용 서버리스 선호** → Q14 신설. (3) **LLM은 Claude(Anthropic) 고정** → Q9 RESOLVED. researcher에 Q13·Q14 병렬 위임.
