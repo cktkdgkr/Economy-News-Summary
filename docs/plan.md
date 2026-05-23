@@ -248,14 +248,17 @@
 
 ---
 
-## A. 조건부·분기 요약(researcher 대기)
+## A. 분기 확정 결과 (2026-05-21, 사용자 위임 → 권장안 채택)
 
-| 작업 | 분기 트리거 | 결정 후 액션 |
+| 작업 | 결정 | 근거 |
 | --- | --- | --- |
-| T-04 | Q1, Q2 | 분기 A(API) vs B(스크래핑) 중 택1, 구현 클래스 확정 |
-| T-05/T-09 | Q4 | 키 보관 방식·LLM 호출 위치 확정 |
-| T-07 | Q3 | WorkManager 단독 vs FCM 추가 결정 |
-| 전체 | Q6 | 100자 정의 확정 시 `SummaryLengthEnforcer` 갱신 |
+| T-04 | **분기 A — 빅카인즈 공식 Open API**(Retrofit). 스크래핑 분기 B 폐기. | Q1 DECIDED / Q2 RESOLVED. KPF API 키 신청 병행. |
+| T-05 | **백엔드 프록시**(Firebase Cloud Functions)에서 LLM 호출. 클라이언트는 자체 백엔드 호출만. **Claude Haiku 4.5** MVP. | Q4 RESOLVED / Q9 DECIDED. |
+| T-07 | **백엔드 Scheduled Function(KST 07:00) → FCM high-priority → 클라이언트 expedited Worker → 알림 게시**. WorkManager 단독 폐기. | Q3 RESOLVED. |
+| T-09 | 키 입력 UI 제거(백엔드 보관). 설정은 권한 안내·배터리 최적화 예외 안내. | Q4 결과 파생. |
+| 전체 | 100자 정의는 Q6 잠정안(공백 포함 코드포인트 80~120자)로 진행. 변경 시 `SummaryLengthEnforcer` 단일 수정. | — |
+
+> 주의: 백엔드(Firebase Functions) 구성은 별도 작업 단위가 필요하다. plan.md에 **T-13(백엔드: Scheduled Function + FCM 송신 + LLM 프록시)** 를 추가한다. 본 저장소가 안드로이드 앱 단일 저장소이므로 백엔드 코드는 `backend/` 서브디렉터리에 두는 것을 기본 권장(별도 저장소 분리는 release-engineer 단계에서 재검토).
 
 ---
 
