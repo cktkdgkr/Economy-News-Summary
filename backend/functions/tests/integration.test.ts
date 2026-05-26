@@ -37,9 +37,9 @@ function makeArticles(count: number) {
   }));
 }
 
-// 정확히 80~120자 범위 내 헤드라인 (이 문자열은 96자)
+// 80~120자 범위 내 헤드라인 (83자)
 const MOCK_HEADLINE =
-  "미 연준 금리 동결·한국 반도체 수출 호조—글로벌 경기 회복 기대감 확산, 원화 강세 전환 전망, 코스피 반등 기대";
+  "미국 연방준비제도 금리 동결·한국 반도체 수출 호조세 지속—글로벌 경기 회복 기대감 확산되며 원화 강세 전환 전망, 코스피 3000 돌파 기대감 고조";
 
 function makeSummarizeResult(articles: ReturnType<typeof makeArticles>) {
   return {

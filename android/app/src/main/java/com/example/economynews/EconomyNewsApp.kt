@@ -25,7 +25,7 @@ class EconomyNewsApp : Application() {
                 Log.d("EconomyNewsApp", msg)
             }
         CoroutineScope(Dispatchers.IO).launch {
-            repository.purgeOlderThan(31)
+            repository.purgeOlderThan(30)
         }
     }
 }

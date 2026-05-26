@@ -23,11 +23,6 @@ class ConnectivityObserver @Inject constructor(
             override fun onAvailable(network: Network) { trySend(ConnectivityState.Online) }
             override fun onLost(network: Network) { trySend(ConnectivityState.Offline) }
         }
-        val request = NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .build()
-        cm.registerNetworkCallback(request, callback)
-
         val active = cm.activeNetwork
         val caps = cm.getNetworkCapabilities(active)
         val initial = if (caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true) {
@@ -36,6 +31,11 @@ class ConnectivityObserver @Inject constructor(
             ConnectivityState.Offline
         }
         trySend(initial)
+
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        cm.registerNetworkCallback(request, callback)
 
         awaitClose { cm.unregisterNetworkCallback(callback) }
     }
