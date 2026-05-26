@@ -30,12 +30,20 @@ class DetailViewModel @Inject constructor(
     val uiState: StateFlow<DetailUiState> = _uiState.asStateFlow()
 
     init {
-        viewModelScope.launch {
-            val digest = repository.getByDate(dateKst)
-            _uiState.value = if (digest != null) {
-                DetailUiState.Success(digest)
-            } else {
-                DetailUiState.Error("다이제스트를 찾을 수 없습니다")
+        if (dateKst.isBlank()) {
+            _uiState.value = DetailUiState.Error("날짜 인자가 누락되었습니다")
+        } else {
+            viewModelScope.launch {
+                try {
+                    val digest = repository.getByDate(dateKst)
+                    _uiState.value = if (digest != null) {
+                        DetailUiState.Success(digest)
+                    } else {
+                        DetailUiState.Error("다이제스트를 찾을 수 없습니다")
+                    }
+                } catch (e: Exception) {
+                    _uiState.value = DetailUiState.Error(e.message ?: "오류가 발생했습니다")
+                }
             }
         }
     }

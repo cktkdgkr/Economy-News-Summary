@@ -120,7 +120,7 @@ private fun DigestContent(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "기사 ${digest.articleCount}건 · ${digest.createdAt.take(16).replace("T", " ")} UTC",
+                        text = "기사 ${digest.articleCount}건 · ${formatKst(digest.createdAt)}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -161,5 +161,16 @@ private fun DigestItemRow(item: DigestItem) {
                 )
             }
         }
+    }
+}
+
+private fun formatKst(isoUtc: String): String {
+    return try {
+        val instant = java.time.Instant.parse(isoUtc)
+        val kst = instant.atZone(java.time.ZoneId.of("Asia/Seoul"))
+        val formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+        "${formatter.format(kst)} KST"
+    } catch (_: Exception) {
+        isoUtc
     }
 }
