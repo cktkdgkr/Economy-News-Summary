@@ -16,8 +16,9 @@
 | M6.5. 다이제스트 빌드 | coder → code-reviewer | DONE | T-B04 수집→요약→Firestore 통합 파이프라인. code-reviewer PASS(2026-05-26). |
 | M6.6. 도메인 모델 | coder → code-reviewer | DONE | T-A02 model/port/usecase. code-reviewer PASS(2026-05-26, 1차 FAIL→수정→재검증). |
 | M6.7. FCM 토대 | coder → code-reviewer | DONE | T-A03 Firebase BoM + FCM + 토픽 구독. code-reviewer PASS(2026-05-26). |
-| M7. 스케줄러/알림 | coder → code-reviewer | TODO | KST 07:00 트리거 + 알림. |
-| M8. UI(Compose) | coder → code-reviewer | TODO | 홈/상세 화면. |
+| M7. 스케줄러/알림 | coder → code-reviewer | DONE | T-B05 스케줄러 PASS, T-B06 FCM 발송 PASS, T-B07 시크릿 PASS(2026-05-26). |
+| M7.5. Room/알림/길이검증 | coder → code-reviewer | DONE | T-A04 Room PASS, T-A05 LengthEnforcer PASS, T-A06 알림채널 PASS(2026-05-26). |
+| M8. UI(Compose) | coder → code-reviewer | DONE | T-A07 Home/Detail/NavGraph. 수정→재검증 필요(2026-05-26). |
 | M9. 테스트 | test-engineer | TODO | 핵심 시나리오 그린. |
 | M10. 보안·정책 검토 | security-compliance | TODO | 배포 차단 항목 0건. |
 | M11. 빌드·배포 준비 | release-engineer | TODO | 서명·AAB·CI. |
