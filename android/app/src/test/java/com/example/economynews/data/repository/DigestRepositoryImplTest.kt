@@ -15,6 +15,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 class DigestRepositoryImplTest {
@@ -32,7 +33,7 @@ class DigestRepositoryImplTest {
     fun `purgeOlderThan 30일은 30일 이전 cutoff를 deleteOlderThan에 전달한다`() = runBlocking {
         repository.purgeOlderThan(30)
 
-        val expected = LocalDate.now()
+        val expected = LocalDate.now(ZoneId.of("Asia/Seoul"))
             .minusDays(30L)
             .format(DateTimeFormatter.ISO_LOCAL_DATE)
         assertEquals(expected, fakeDao.lastDeleteOlderThanCutoff)
@@ -42,7 +43,7 @@ class DigestRepositoryImplTest {
     fun `purgeOlderThan 1일은 어제 날짜를 cutoff로 사용한다`() = runBlocking {
         repository.purgeOlderThan(1)
 
-        val expected = LocalDate.now()
+        val expected = LocalDate.now(ZoneId.of("Asia/Seoul"))
             .minusDays(1L)
             .format(DateTimeFormatter.ISO_LOCAL_DATE)
         assertEquals(expected, fakeDao.lastDeleteOlderThanCutoff)
@@ -108,6 +109,12 @@ class DigestRepositoryImplTest {
 
         override suspend fun deleteOlderThan(cutoffDate: String) {
             lastDeleteOlderThanCutoff = cutoffDate
+        }
+
+        override suspend fun upsert(digest: DigestEntity, items: List<DigestItemEntity>) {
+            deleteItemsByDate(digest.dateKst)
+            insertDigest(digest)
+            insertItems(items)
         }
     }
 }

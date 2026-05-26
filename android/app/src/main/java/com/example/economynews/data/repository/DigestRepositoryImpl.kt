@@ -8,6 +8,7 @@ import com.example.economynews.domain.port.DigestRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
@@ -28,7 +29,7 @@ class DigestRepositoryImpl @Inject constructor(
     }
 
     override suspend fun purgeOlderThan(days: Int) {
-        val cutoff = LocalDate.now()
+        val cutoff = LocalDate.now(ZoneId.of("Asia/Seoul"))
             .minusDays(days.toLong())
             .format(DateTimeFormatter.ISO_LOCAL_DATE)
         dao.deleteOlderThan(cutoff)
