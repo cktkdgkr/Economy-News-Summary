@@ -29,3 +29,9 @@
 # Model classes
 -keep class com.example.economynews.domain.model.** { *; }
 -keep class com.example.economynews.data.local.* { *; }
+
+# Strip debug/verbose logs in release
+-assumenosideeffects class android.util.Log {
+    public static int d(...);
+    public static int v(...);
+}

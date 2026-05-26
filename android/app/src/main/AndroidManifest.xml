@@ -7,7 +7,7 @@
 
     <application
         android:name=".EconomyNewsApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:label="Economy News Summary"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">

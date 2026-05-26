@@ -25,7 +25,8 @@ class IngestDigestUseCase @Inject constructor(
 
     private fun parsePayload(payload: Map<String, String>): DailyDigest {
         val dateKst = requireNotNull(payload["date_kst"]) { "date_kst missing" }
-        val headline = requireNotNull(payload["headline"]) { "headline missing" }
+        val rawHeadline = requireNotNull(payload["headline"]) { "headline missing" }
+        val headline = rawHeadline.take(300)
         val totalCount = payload["total_count"]?.toIntOrNull() ?: 0
         val itemsJson = payload["items_json"]
         val items = if (itemsJson.isNullOrBlank()) {
@@ -52,7 +53,9 @@ class IngestDigestUseCase @Inject constructor(
                 source = obj["source"]?.jsonPrimitive?.content ?: "",
                 title = obj["title"]?.jsonPrimitive?.content ?: "",
                 shortSummary = obj["shortSummary"]?.jsonPrimitive?.content ?: "",
-                link = obj["link"]?.jsonPrimitive?.content ?: "",
+                link = (obj["link"]?.jsonPrimitive?.content ?: "").let { url ->
+                    if (url.startsWith("https://") || url.startsWith("http://")) url else ""
+                },
             )
         }
     }
