@@ -1,0 +1,24 @@
+{
+  "_comment": "이 파일은 예시입니다. 실제 google-services.json은 Firebase Console에서 다운로드하세요.",
+  "project_info": {
+    "project_number": "000000000000",
+    "project_id": "your-project-id",
+    "storage_bucket": "your-project-id.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:000000000000:android:0000000000000000",
+        "android_client_info": {
+          "package_name": "com.example.economynews"
+        }
+      },
+      "api_key": [
+        {
+          "current_key": "YOUR_API_KEY_HERE"
+        }
+      ]
+    }
+  ],
+  "configuration_version": "1"
+}
