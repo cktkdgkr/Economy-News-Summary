@@ -10,9 +10,9 @@
 | M1. 외부 의존성 조사 | researcher | DONE | Q2/Q3/Q4/Q9/Q13/Q14 RESOLVED. Q1 DEPRIORITIZED, Q12 OBSOLETE. 외부 의존성 모두 확정 (NewsData.io / Firebase Functions / Anthropic Claude). |
 | M2. 계획·아키텍처 수립 | planner | DONE | plan.md/architecture.md 재작성 완료(2026-05-22). 단일 채택안: NewsData.io / Firebase Functions 2nd gen + Cloud Scheduler + FCM / Anthropic Claude `claude-haiku-4-5-20251001`. 작업 단위 T-A01~T-A12(Android), T-B01~T-B09(Backend)로 재구성. Q5/Q6/Q7/Q10/Q11 RESOLVED. |
 | M3. 사용자 승인 | (오케스트레이터 ↔ 사용자) | DONE | 2026-05-22 사용자 승인. LLM 공급자는 Gemini 2.5 Flash로 변경 결정. |
-| M4. 프로젝트 스캐폴드 | coder → code-reviewer | IN_PROGRESS | Backend T-B01 완료(2026-05-22, code-reviewer PASS). Android T-A01 미착수. |
-| M5. 뉴스 수집 모듈 | coder → code-reviewer | TODO | 빅카인즈 클라이언트 + 시간 윈도 계산. |
-| M6. 요약기 모듈 | coder → code-reviewer | TODO | LLM 호출 + 100자 제약. |
+| M4. 프로젝트 스캐폴드 | coder → code-reviewer | DONE | Backend T-B01(2026-05-22), Android T-A01(2026-05-26) 모두 code-reviewer PASS. |
+| M5. 뉴스 수집 모듈 | coder → code-reviewer | DONE | T-B02 NewsData.io 클라이언트 + KST 윈도 계산. code-reviewer PASS(2026-05-26). |
+| M6. 요약기 모듈 | coder → code-reviewer | DONE | T-B03 Gemini 클라이언트 + 100자 후처리 + 토큰 버킷. code-reviewer PASS(2026-05-26). |
 | M7. 스케줄러/알림 | coder → code-reviewer | TODO | KST 07:00 트리거 + 알림. |
 | M8. UI(Compose) | coder → code-reviewer | TODO | 홈/상세 화면. |
 | M9. 테스트 | test-engineer | TODO | 핵심 시나리오 그린. |
@@ -30,3 +30,6 @@
 - 2026-05-22: planner가 `docs/plan.md`·`docs/architecture.md` 전면 재작성. 저장소를 `android/` + `backend/` 두 트리로 분리, 작업 단위를 T-A##(Android)/T-B##(Backend)로 재구성. 빅카인즈·온디바이스·WorkManager 옵션 완전 제거. 다이제스트 생성은 백엔드, 앱은 FCM 수신·표시·캐시·알림만 담당으로 확정. Q5/Q6/Q7/Q10/Q11 RESOLVED 처리. M2 DONE. M3(사용자 승인) 대기.
 - 2026-05-22: 사용자 결정 — 무료 요구 충족 위해 LLM 공급자를 **Google Gemini 2.5 Flash (AI Studio 무료)**로 변경. Q15 신설·RESOLVED, Q9 결론 갱신. plan.md/architecture.md의 LLM 표기 일괄 교체. M3 DONE.
 - 2026-05-22: **T-B01 완료**(code-reviewer PASS). `backend/` 트리 신규: Firebase Functions 2nd gen + TypeScript 스캐폴드, `helloWorld` v2 HTTPS(asia-northeast3), Node 20, ESLint 9 flat config, README/EMULATOR 가이드. 외부 콘솔 작업(프로젝트 생성·Blaze 전환)은 사용자 대기. M4 IN_PROGRESS.
+- 2026-05-26: **T-B02 완료**(code-reviewer PASS, 1차 FAIL→수정→재검증 PASS). NewsData.io 클라이언트(fetch 주입, zod DTO, 페이지네이션 3페이지 하드캡) + KST 윈도 계산(UTC+9 전일 윈도). jest 도입, 11 테스트 그린. M5 DONE.
+- 2026-05-26: **T-B03 완료**(code-reviewer PASS, 1차 FAIL→수정→재검증 PASS). Gemini 클라이언트(@google/genai, 2.5-flash→2.0-flash 폴백, 지수 백오프 4회 시도) + lengthEnforcer(80~120자, 코드포인트 기준) + rateLimiter(10 RPM 토큰 버킷). 16 테스트 그린. M6 DONE.
+- 2026-05-26: **T-A01 완료**(code-reviewer PASS, 1차 FAIL→수정→재검증 PASS). `android/` 트리 신규: Kotlin 2.1 + AGP 8.7.3 + Compose + Hilt + KSP + Version Catalog. 빌드는 SDK 미설치 환경으로 구문 정합성만 확인. M4 DONE.
