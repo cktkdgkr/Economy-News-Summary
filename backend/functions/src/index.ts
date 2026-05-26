@@ -1,6 +1,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { buildDailyDigest } from "./digest/buildDailyDigest";
+import { newsdataApiKey, geminiApiKey } from "./secrets";
 
 export const helloWorld = onRequest(
   { region: "asia-northeast3" },
@@ -17,6 +18,7 @@ export const dailyDigest = onSchedule(
     retryCount: 3,
     memory: "512MiB",
     timeoutSeconds: 120,
+    secrets: [newsdataApiKey, geminiApiKey],
   },
   async () => {
     const newsdataApiKey = process.env.NEWSDATA_API_KEY ?? "";
