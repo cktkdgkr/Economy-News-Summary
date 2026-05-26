@@ -44,7 +44,8 @@ class IngestDigestUseCase @Inject constructor(
     }
 
     private fun parseItems(json: String): List<DigestItem> {
-        val arr = Json.parseToJsonElement(json) as JsonArray
+        val arr = Json.parseToJsonElement(json) as? JsonArray
+            ?: throw IllegalArgumentException("items_json must be a JSON array")
         return arr.map { element ->
             val obj = element.jsonObject
             DigestItem(
