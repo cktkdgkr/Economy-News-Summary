@@ -18,10 +18,10 @@
 | M6.7. FCM 토대 | coder → code-reviewer | DONE | T-A03 Firebase BoM + FCM + 토픽 구독. code-reviewer PASS(2026-05-26). |
 | M7. 스케줄러/알림 | coder → code-reviewer | DONE | T-B05 스케줄러 PASS, T-B06 FCM 발송 PASS, T-B07 시크릿 PASS(2026-05-26). |
 | M7.5. Room/알림/길이검증 | coder → code-reviewer | DONE | T-A04 Room PASS, T-A05 LengthEnforcer PASS, T-A06 알림채널 PASS(2026-05-26). |
-| M8. UI(Compose) | coder → code-reviewer | DONE | T-A07 Home/Detail/NavGraph. 수정→재검증 필요(2026-05-26). |
-| M9. 테스트 | test-engineer | TODO | 핵심 시나리오 그린. |
+| M8. UI(Compose) | coder → code-reviewer | DONE | T-A07 Home/Detail/NavGraph PASS, T-A08 Settings PASS, T-A09 오프라인 폴백 PASS(2026-05-26). |
+| M9. 테스트 | test-engineer | DONE | T-B08 종단 통합 테스트 45건 그린(2026-05-26). 핵심 시나리오 모두 커버. |
 | M10. 보안·정책 검토 | security-compliance | TODO | 배포 차단 항목 0건. |
-| M11. 빌드·배포 준비 | release-engineer | TODO | 서명·AAB·CI. |
+| M11. 빌드·배포 준비 | release-engineer | DONE | T-A11 ProGuard/R8 릴리스 PASS, T-A12 CI/CD GitHub Actions PASS(2026-05-26). |
 | M12. 내부 테스트 트랙 업로드 | (사용자) | TODO | Play Console internal testing. |
 
 ## 변경 로그
