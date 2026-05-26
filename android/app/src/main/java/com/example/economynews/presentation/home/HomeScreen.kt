@@ -20,6 +20,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -39,13 +40,20 @@ fun HomeScreen(
     onSettingsClick: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    HomeScreenContent(uiState = uiState, onDigestClick = onDigestClick, onSettingsClick = onSettingsClick)
+    val isOffline by viewModel.isOffline.collectAsState()
+    HomeScreenContent(
+        uiState = uiState,
+        isOffline = isOffline,
+        onDigestClick = onDigestClick,
+        onSettingsClick = onSettingsClick,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreenContent(
     uiState: HomeUiState,
+    isOffline: Boolean = false,
     onDigestClick: (String) -> Unit = {},
     onSettingsClick: () -> Unit = {},
 ) {
@@ -64,21 +72,41 @@ fun HomeScreenContent(
             )
         },
     ) { innerPadding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            when (val state = uiState) {
-                is HomeUiState.Loading -> LoadingContent()
-                is HomeUiState.Empty -> EmptyContent()
-                is HomeUiState.Error -> ErrorContent(state.message)
-                is HomeUiState.Success -> DigestContent(
-                    digest = state.digest,
-                    onDigestClick = onDigestClick,
-                )
+            if (isOffline) {
+                OfflineBanner()
+            }
+            Box(modifier = Modifier.fillMaxSize()) {
+                when (val state = uiState) {
+                    is HomeUiState.Loading -> LoadingContent()
+                    is HomeUiState.Empty -> EmptyContent()
+                    is HomeUiState.Error -> ErrorContent(state.message)
+                    is HomeUiState.Success -> DigestContent(
+                        digest = state.digest,
+                        onDigestClick = onDigestClick,
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun OfflineBanner() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+    ) {
+        Text(
+            text = "오프라인 — 캐시된 뉴스를 표시합니다",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
     }
 }
 
