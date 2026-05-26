@@ -9,6 +9,7 @@ import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
 import com.example.economynews.presentation.detail.DigestDetailScreen
 import com.example.economynews.presentation.home.HomeScreen
+import com.example.economynews.presentation.settings.SettingsScreen
 
 @Composable
 fun NavGraph(
@@ -21,7 +22,11 @@ fun NavGraph(
                 onDigestClick = { dateKst ->
                     navController.navigate("detail/$dateKst")
                 },
+                onSettingsClick = { navController.navigate("settings") },
             )
+        }
+        composable("settings") {
+            SettingsScreen(onBack = { navController.popBackStack() })
         }
         composable(
             route = "detail/{dateKst}",

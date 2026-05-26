@@ -10,10 +10,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -32,9 +36,10 @@ import com.example.economynews.domain.model.DigestItem
 fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
     onDigestClick: (String) -> Unit = {},
+    onSettingsClick: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    HomeScreenContent(uiState = uiState, onDigestClick = onDigestClick)
+    HomeScreenContent(uiState = uiState, onDigestClick = onDigestClick, onSettingsClick = onSettingsClick)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -42,10 +47,21 @@ fun HomeScreen(
 fun HomeScreenContent(
     uiState: HomeUiState,
     onDigestClick: (String) -> Unit = {},
+    onSettingsClick: () -> Unit = {},
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("오늘의 경제 뉴스") })
+            TopAppBar(
+                title = { Text("오늘의 경제 뉴스") },
+                actions = {
+                    IconButton(onClick = onSettingsClick) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "설정",
+                        )
+                    }
+                },
+            )
         },
     ) { innerPadding ->
         Box(

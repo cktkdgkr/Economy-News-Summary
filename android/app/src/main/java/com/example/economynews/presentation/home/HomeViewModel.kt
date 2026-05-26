@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.economynews.domain.model.DailyDigest
 import com.example.economynews.domain.usecase.ObserveLatestDigestUseCase
+import com.example.economynews.platform.network.ConnectivityObserver
+import com.example.economynews.presentation.common.ConnectivityState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -22,6 +24,7 @@ sealed interface HomeUiState {
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     observeLatestDigest: ObserveLatestDigestUseCase,
+    connectivityObserver: ConnectivityObserver,
 ) : ViewModel() {
 
     val uiState: StateFlow<HomeUiState> = observeLatestDigest()
@@ -31,4 +34,8 @@ class HomeViewModel @Inject constructor(
         }
         .catch { e -> emit(HomeUiState.Error(e.message ?: "오류가 발생했습니다")) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState.Loading)
+
+    val isOffline: StateFlow<Boolean> = connectivityObserver.observe()
+        .map { it is ConnectivityState.Offline }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 }
