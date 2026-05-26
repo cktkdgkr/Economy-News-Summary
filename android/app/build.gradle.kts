@@ -65,6 +65,11 @@ dependencies {
 
     implementation(libs.kotlinx.serialization.json)
 
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
+    testImplementation(libs.room.testing)
+
     testImplementation(libs.junit)
 
     debugImplementation(libs.compose.ui.tooling)
