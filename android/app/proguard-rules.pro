@@ -28,4 +28,4 @@
 
 # Model classes
 -keep class com.example.economynews.domain.model.** { *; }
--keep class com.example.economynews.data.local.*Entity { *; }
+-keep class com.example.economynews.data.local.* { *; }
