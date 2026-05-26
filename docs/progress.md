@@ -13,6 +13,9 @@
 | M4. 프로젝트 스캐폴드 | coder → code-reviewer | DONE | Backend T-B01(2026-05-22), Android T-A01(2026-05-26) 모두 code-reviewer PASS. |
 | M5. 뉴스 수집 모듈 | coder → code-reviewer | DONE | T-B02 NewsData.io 클라이언트 + KST 윈도 계산. code-reviewer PASS(2026-05-26). |
 | M6. 요약기 모듈 | coder → code-reviewer | DONE | T-B03 Gemini 클라이언트 + 100자 후처리 + 토큰 버킷. code-reviewer PASS(2026-05-26). |
+| M6.5. 다이제스트 빌드 | coder → code-reviewer | DONE | T-B04 수집→요약→Firestore 통합 파이프라인. code-reviewer PASS(2026-05-26). |
+| M6.6. 도메인 모델 | coder → code-reviewer | DONE | T-A02 model/port/usecase. code-reviewer PASS(2026-05-26, 1차 FAIL→수정→재검증). |
+| M6.7. FCM 토대 | coder → code-reviewer | DONE | T-A03 Firebase BoM + FCM + 토픽 구독. code-reviewer PASS(2026-05-26). |
 | M7. 스케줄러/알림 | coder → code-reviewer | TODO | KST 07:00 트리거 + 알림. |
 | M8. UI(Compose) | coder → code-reviewer | TODO | 홈/상세 화면. |
 | M9. 테스트 | test-engineer | TODO | 핵심 시나리오 그린. |
@@ -33,3 +36,6 @@
 - 2026-05-26: **T-B02 완료**(code-reviewer PASS, 1차 FAIL→수정→재검증 PASS). NewsData.io 클라이언트(fetch 주입, zod DTO, 페이지네이션 3페이지 하드캡) + KST 윈도 계산(UTC+9 전일 윈도). jest 도입, 11 테스트 그린. M5 DONE.
 - 2026-05-26: **T-B03 완료**(code-reviewer PASS, 1차 FAIL→수정→재검증 PASS). Gemini 클라이언트(@google/genai, 2.5-flash→2.0-flash 폴백, 지수 백오프 4회 시도) + lengthEnforcer(80~120자, 코드포인트 기준) + rateLimiter(10 RPM 토큰 버킷). 16 테스트 그린. M6 DONE.
 - 2026-05-26: **T-A01 완료**(code-reviewer PASS, 1차 FAIL→수정→재검증 PASS). `android/` 트리 신규: Kotlin 2.1 + AGP 8.7.3 + Compose + Hilt + KSP + Version Catalog. 빌드는 SDK 미설치 환경으로 구문 정합성만 확인. M4 DONE.
+- 2026-05-26: **T-B04 완료**(code-reviewer PASS). 다이제스트 빌드 함수: 수집→요약→Firestore 저장 파이프라인. 멱등 upsert(merge:true), expiresAt 90일, 기사 0건 빈 다이제스트. 7 테스트 그린(총 34). M6.5 DONE.
+- 2026-05-26: **T-A02 완료**(code-reviewer PASS, 1차 FAIL→수정→재검증 PASS). domain 모델(DailyDigest, DigestItem), Port 4종(DigestRepository, NotificationPort, ClockPort, DigestFetchPort), UseCase 2종(ObserveLatestDigest, IngestDigest). kotlinx-serialization-json 도입. 3 테스트. M6.6 DONE.
+- 2026-05-26: **T-A03 완료**(code-reviewer PASS). Firebase BoM 33.7.0 + FCM SDK, EconomyFcmService(MessagingService), economy-news 토픽 구독, AndroidManifest 권한·서비스 등록, google-services.json.example. M6.7 DONE.
