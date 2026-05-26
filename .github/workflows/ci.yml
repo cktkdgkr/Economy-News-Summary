@@ -39,8 +39,9 @@ jobs:
           java-version: 17
           cache: gradle
       - name: Create google-services.json
-        run: echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d > app/google-services.json
+        if: env.GOOGLE_SERVICES_JSON != ''
+        run: echo "$GOOGLE_SERVICES_JSON" | base64 -d > app/google-services.json
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
       - run: chmod +x gradlew
-      - run: ./gradlew :app:assembleDebug
-      - run: ./gradlew :app:lintDebug
-      - run: ./gradlew :app:testDebugUnitTest
+      - run: ./gradlew :app:assembleDebug :app:lintDebug :app:testDebugUnitTest
