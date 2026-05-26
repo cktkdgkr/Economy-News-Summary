@@ -2,6 +2,7 @@ import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { buildDailyDigest } from "./digest/buildDailyDigest";
 import { newsdataApiKey, geminiApiKey } from "./secrets";
+import { sendDigestNotification } from "./notify/fcm";
 
 export const helloWorld = onRequest(
   { region: "asia-northeast3" },
@@ -24,9 +25,10 @@ export const dailyDigest = onSchedule(
     const newsdataApiKey = process.env.NEWSDATA_API_KEY ?? "";
     const geminiApiKey = process.env.GEMINI_API_KEY ?? "";
 
-    await buildDailyDigest({
+    const digest = await buildDailyDigest({
       newsdataApiKey,
       geminiApiKey,
     });
+    await sendDigestNotification(digest);
   },
 );
