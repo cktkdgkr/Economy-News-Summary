@@ -9,9 +9,9 @@ import android.net.Uri
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.example.economynews.R
 import com.example.economynews.domain.model.DailyDigest
 import com.example.economynews.domain.port.NotificationPort
+import com.example.economynews.presentation.navigation.DeepLinks
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 
@@ -33,7 +33,7 @@ class DailyDigestNotifier @Inject constructor(
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val pendingIntent = PendingIntent.getActivity(
-            context, 0, intent,
+            context, digest.dateKst.hashCode(), intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 

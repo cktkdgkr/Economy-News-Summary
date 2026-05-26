@@ -1,4 +1,4 @@
-package com.example.economynews.presentation.home
+package com.example.economynews.presentation.detail
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,10 +10,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -29,23 +34,38 @@ import com.example.economynews.domain.model.DailyDigest
 import com.example.economynews.domain.model.DigestItem
 
 @Composable
-fun HomeScreen(
-    viewModel: HomeViewModel = hiltViewModel(),
-    onDigestClick: (String) -> Unit = {},
+fun DigestDetailScreen(
+    viewModel: DetailViewModel = hiltViewModel(),
+    onLinkClick: (String) -> Unit = {},
+    onBack: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    HomeScreenContent(uiState = uiState, onDigestClick = onDigestClick)
+    DigestDetailScreenContent(uiState = uiState, onLinkClick = onLinkClick, onBack = onBack)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreenContent(
-    uiState: HomeUiState,
-    onDigestClick: (String) -> Unit = {},
+fun DigestDetailScreenContent(
+    uiState: DetailUiState,
+    onLinkClick: (String) -> Unit = {},
+    onBack: () -> Unit = {},
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("오늘의 경제 뉴스") })
+            TopAppBar(
+                title = {
+                    val title = (uiState as? DetailUiState.Success)?.digest?.dateKst ?: "상세"
+                    Text(title)
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "뒤로 가기",
+                        )
+                    }
+                },
+            )
         },
     ) { innerPadding ->
         Box(
@@ -54,12 +74,11 @@ fun HomeScreenContent(
                 .padding(innerPadding),
         ) {
             when (val state = uiState) {
-                is HomeUiState.Loading -> LoadingContent()
-                is HomeUiState.Empty -> EmptyContent()
-                is HomeUiState.Error -> ErrorContent(state.message)
-                is HomeUiState.Success -> DigestContent(
+                is DetailUiState.Loading -> LoadingContent()
+                is DetailUiState.Error -> ErrorContent(state.message)
+                is DetailUiState.Success -> DetailContent(
                     digest = state.digest,
-                    onDigestClick = onDigestClick,
+                    onLinkClick = onLinkClick,
                 )
             }
         }
@@ -74,16 +93,6 @@ private fun LoadingContent() {
 }
 
 @Composable
-private fun EmptyContent() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(
-            text = "오늘의 다이제스트가 아직 준비되지 않았습니다.",
-            style = MaterialTheme.typography.bodyLarge,
-        )
-    }
-}
-
-@Composable
 private fun ErrorContent(message: String) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(
@@ -94,50 +103,40 @@ private fun ErrorContent(message: String) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DigestContent(
+private fun DetailContent(
     digest: DailyDigest,
-    onDigestClick: (String) -> Unit,
+    onLinkClick: (String) -> Unit,
 ) {
     LazyColumn(contentPadding = PaddingValues(16.dp)) {
         item {
-            Card(
-                onClick = { onDigestClick(digest.dateKst) },
-                modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = digest.dateKst,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = digest.headline,
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "기사 ${digest.articleCount}건 · ${digest.createdAt.take(16).replace("T", " ")} UTC",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+            Text(
+                text = digest.headline,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "기사 ${digest.articleCount}건",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
         }
-        item { Spacer(modifier = Modifier.height(8.dp)) }
         items(digest.items) { item ->
-            DigestItemRow(item = item)
+            DigestItemCard(item = item, onLinkClick = onLinkClick)
             Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DigestItemRow(item: DigestItem) {
+private fun DigestItemCard(
+    item: DigestItem,
+    onLinkClick: (String) -> Unit,
+) {
     Card(
+        onClick = { onLinkClick(item.link) },
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
@@ -160,6 +159,13 @@ private fun DigestItemRow(item: DigestItem) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            Spacer(modifier = Modifier.height(8.dp))
+            Icon(
+                imageVector = Icons.Default.OpenInBrowser,
+                contentDescription = "원문 보기",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.align(Alignment.End),
+            )
         }
     }
 }

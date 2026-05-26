@@ -60,6 +60,10 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
 
+    implementation(libs.navigation.compose)
+    implementation(libs.hilt.navigation.compose)
+    implementation(libs.browser)
+
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
 
